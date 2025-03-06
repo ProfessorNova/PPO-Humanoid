@@ -8,7 +8,7 @@ learning.
 
 ## Results
 
-![Demo Gif](https://github.com/ProfessorNova/PPO-Humanoid/blob/main/docs/demo.gif)
+![Demo Gif](/docs/demo.gif)
 
 Here is a demonstration of the agent's performance after training for 3000 epochs on the Humanoid-v4 environment.
 
@@ -30,7 +30,7 @@ To get started with this project, follow these steps:
 3. **Install Dependencies**:
    Run the following command to install the required packages:
     ```bash
-    pip install -r requirements.txt
+    pip install -r req.txt
     ```
 
    For proper PyTorch installation, visit [pytorch.org](https://pytorch.org/get-started/locally/) and follow the
@@ -42,14 +42,10 @@ To get started with this project, follow these steps:
     pip install gymnasium[mujoco]
     ```
 
-5. **Train the Model**:
+5. **Train the Model (PPO)**:
    To start training the model, run:
     ```bash
-    python train.py --run-name "my_run"
-    ```
-   To train using a GPU, add the `--cuda` flag:
-    ```bash
-    python train.py --run-name "my_run" --cuda
+    python train_ppo.py
     ```
 
 6. **Monitor Training Progress**:
@@ -72,12 +68,12 @@ environment.
 ### Key Components
 
 - **Agent**: The core neural network model that outputs both policy (action probabilities) and value estimates.
-- **Environment**: The Humanoid-v4 environment from the Gymnasium Mujoco suite, which provides a realistic physics
+- **Environment**: The Humanoid-v5 environment from the Gymnasium Mujoco suite, which provides a realistic physics
   simulation for testing control algorithms.
 - **Buffer**: A class for storing trajectories (observations, actions, rewards, etc.) that the agent collects during
   interaction with the environment. This data is later used to calculate advantages and train the model.
-- **Training Script**: The `train.py` script handles the training loop, including collecting data, updating the model,
-  and logging results.
+- **Training Script**: The `train_ppo.py` script handles the training loop, including collecting data, updating the
+  model, and logging results.
 
 ---
 
@@ -87,81 +83,39 @@ environment.
 
 You can customize the training by modifying the command-line arguments:
 
-- `--n-envs`: Number of environments to run in parallel (default: 48).
+- `--n-envs`: Number of environments to run in parallel (default: 32).
 - `--n-epochs`: Number of epochs to train the model (default: 3000).
-- `--n-steps`: Number of steps per environment per epoch (default: 1024).
-- `--batch-size`: Batch size for training (default: 8192).
+- `--n-steps`: Number of steps per environment per epoch (default: 2048).
+- `--batch-size`: Batch size for training (default: 16384).
 - `--train-iters`: Number of training iterations per epoch (default: 20).
 
 For example:
 
 ```bash
-python train.py --run-name "experiment_1" --n-envs 64 --batch-size 4096 --train-iters 30 --cuda
+python train_ppo.py --n-envs 64 --batch-size 4096 --train-iters 30 --cuda
 ```
 
-All hyperparameters can be viewed either with `python train.py --help` or by looking at the
-parse_args() function in `train.py`.
+All hyperparameters can be viewed either with `python train_ppo.py --help` or by looking at the
+`parse_args_ppo()` function in `lib/utils.py`.
 
 ---
-
-## Performance
-
-Here are the specifications of the system used for training:
-
-- **CPU**: AMD Ryzen 9 5900X
-- **GPU**: Nvidia RTX 3080 (12GB VRAM)
-- **RAM**: 64GB DDR4
-- **OS**: Windows 11
-
-The training process took about 5 hours to complete 3000 epochs on the Humanoid-v4 environment.
-
-### Hyperparameters
-
-The hyperparameters used for training are as follows:
-
-| param               | value       | 
-|---------------------|-------------| 
-| run_name            | baseline    | 
-| cuda                | True        | 
-| env                 | Humanoid-v4 |
-| n_envs              | 48          |
-| n_epochs            | 3000        |
-| n_steps             | 1024        |
-| batch_size          | 8192        | 
-| train_iters         | 20          | 
-| gamma               | 0.995       | 
-| gae_lambda          | 0.98        |
-| clip_ratio          | 0.1         | 
-| ent_coef            | 1e-05       |
-| vf_coef             | 1.0         |
-| learning_rate       | 0.0003      | 
-| learning_rate_decay | 0.999       |
-| max_grad_norm       | 1.0         | 
-| reward_scale        | 0.005       | 
-| render_epoch        | 50          |
-| save_epoch          | 200         |
 
 ### Statistics
 
 ### Performance Metrics:
 
-The following charts provide insights into the performance during training:
+The following charts provide insights into the performance during training with the current default hyperparameters
+(Note: After updating to Humanoid-v5 environment I only trained for 1000 epochs. The results are still promising and
+should achieve the previous results with more training):
 
 - **Reward**:
-  ![Reward](https://github.com/ProfessorNova/PPO-Humanoid/blob/main/docs/charts_avg_reward.svg)
-
-  As seen in the chart, the agent's average reward is still increasing after 3000 epochs,
-  indicating that the agent has not yet reached its full potential and could benefit from further training.
+  ![Reward](/docs/reward_mean.svg)
 
 - **Policy Loss**:
-  ![Policy Loss](https://github.com/ProfessorNova/PPO-Humanoid/blob/main/docs/losses_policy_loss.svg)
+  ![Policy Loss](/docs/loss_policy.svg)
 
 - **Value Loss**:
-  ![Value Loss](https://github.com/ProfessorNova/PPO-Humanoid/blob/main/docs/losses_value_loss.svg)
+  ![Value Loss](/docs/loss_value.svg)
 
-  In the chart above, the value loss first increases and then decreases until it plateaus after 100M steps. This
-  behavior is expected as the agent first explores the environment and then learns to predict the value of states more
-  accurately.
-
-- **Entropy Loss**:
-  ![Entropy](https://github.com/ProfessorNova/PPO-Humanoid/blob/main/docs/losses_entropy.svg)
+- **Entropy**:
+  ![Entropy](/docs/loss_entropy.svg)

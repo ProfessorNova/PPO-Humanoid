@@ -1,7 +1,7 @@
 import torch
 
 
-class Buffer:
+class PPOBuffer:
     """
     Buffer for storing trajectories
     """
@@ -66,8 +66,8 @@ class Buffer:
     def get(self):
         """
         Call this at the end of the sampling to get the stored trajectories needed for training.
-        :return: obs_buf, act_buf, val_buf, logprob_buf
+        :return: obs_buf, act_buf, logprob_buf
         """
         assert self.ptr == self.capacity
         self.ptr = 0
-        return self.obs_buf, self.act_buf, self.val_buf, self.logprob_buf
+        return self.obs_buf, self.act_buf, self.logprob_buf
