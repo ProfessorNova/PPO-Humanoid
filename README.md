@@ -10,7 +10,7 @@ learning.
 
 ![Demo Gif](/docs/demo.gif)
 
-The above GIF showcases the performance of the PPO agent in the Humanoid-v5 environment after about 1000 epochs of
+The clip above showcases the performance of the PPO agent in the Humanoid-v5 environment after about 1000 epochs of
 training.
 
 ---
