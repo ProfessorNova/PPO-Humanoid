@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
@@ -9,17 +8,14 @@ class PPOAgent(nn.Module):
         super(PPOAgent, self).__init__()
 
         # Actor Network for mu
-        actor_hid1_size = num_inputs * 20
-        actor_hid3_size = num_actions * 10
-        actor_hid2_size = int(np.sqrt(actor_hid1_size * actor_hid3_size))
         self.actor_mu = nn.Sequential(
-            nn.Linear(num_inputs, actor_hid1_size),
+            nn.Linear(num_inputs, 512),
             nn.Tanh(),
-            nn.Linear(actor_hid1_size, actor_hid2_size),
+            nn.Linear(512, 512),
             nn.Tanh(),
-            nn.Linear(actor_hid2_size, actor_hid3_size),
+            nn.Linear(512, 512),
             nn.Tanh(),
-            nn.Linear(actor_hid3_size, num_actions),
+            nn.Linear(512, num_actions),
             nn.Tanh()  # [-1, 1]
         )
 
@@ -27,17 +23,14 @@ class PPOAgent(nn.Module):
         self.actor_logstd = nn.Parameter(torch.ones(1, num_actions) * -0.5)
 
         # Critic Network
-        critic_hid1_size = num_inputs * 20
-        critic_hid3_size = 10
-        critic_hid2_size = int(np.sqrt(critic_hid1_size * critic_hid3_size))
         self.critic = nn.Sequential(
-            nn.Linear(num_inputs, critic_hid1_size),
+            nn.Linear(num_inputs, 512),
             nn.Tanh(),
-            nn.Linear(critic_hid1_size, critic_hid2_size),
+            nn.Linear(512, 512),
             nn.Tanh(),
-            nn.Linear(critic_hid2_size, critic_hid3_size),
+            nn.Linear(512, 512),
             nn.Tanh(),
-            nn.Linear(critic_hid3_size, 1)
+            nn.Linear(512, 1)
         )
 
     def forward(self, x):
@@ -52,7 +45,7 @@ class PPOAgent(nn.Module):
         mu, std = self.forward(x)
         dist = Normal(mu, std)
         if action is None:
-            action = dist.sample()
-        log_prob = dist.log_prob(action).sum(-1)
-        entropy = dist.entropy().sum(-1)
+            action = dist.rsample()  # reparameterization trick because the action is continuous
+        log_prob = dist.log_prob(action).sum(-1)  # sum log prob of each action dimension
+        entropy = dist.entropy().mean(-1)  # average entropy per action dimension
         return action, log_prob, entropy, self.get_value(x)

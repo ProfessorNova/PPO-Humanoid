@@ -25,15 +25,20 @@ def ppo_update(agent, optimizer, scaler, batch_obs, batch_actions, batch_returns
         _, new_log_probs, entropies, new_values = agent.get_action_and_value(batch_obs, batch_actions)
         ratio = torch.exp(new_log_probs - batch_old_log_probs)
 
-        # Normalize the advantages
-        batch_adv = (batch_adv - batch_adv.mean()) / (batch_adv.std() + 1e-8)
+        # Approximate mean KL divergence for this batch per action dimension
+        kl = ((batch_old_log_probs - new_log_probs) / batch_actions.size(-1)).mean()
 
-        # Calculate the policy loss
+        # Surrogate objectives
         surr1 = ratio * batch_adv
         surr2 = torch.clamp(ratio, 1.0 - clip_epsilon, 1.0 + clip_epsilon) * batch_adv
         policy_loss = -torch.min(surr1, surr2).mean()
+
+        # Value function loss
         value_loss = nn.MSELoss()(new_values.squeeze(1), batch_returns)
+
+        # Entropy bonus
         entropy = entropies.mean()
+
         loss = policy_loss + vf_coef * value_loss - ent_coef * entropy
 
     scaler.scale(loss).backward()
@@ -42,7 +47,7 @@ def ppo_update(agent, optimizer, scaler, batch_obs, batch_actions, batch_returns
     scaler.step(optimizer)
     scaler.update()
 
-    return loss.item(), policy_loss.item(), value_loss.item(), entropy.item()
+    return loss.item(), policy_loss.item(), value_loss.item(), entropy.item(), kl.item()
 
 
 if __name__ == "__main__":
@@ -76,17 +81,15 @@ if __name__ == "__main__":
     agent = PPOAgent(obs_dim[0], act_dim[0]).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
 
-    num_epochs = args.n_epochs
-    warmup_epochs = 10
-
 
     def lr_lambda(epoch):
-        # Linear warmup for the first 'warmup_epochs' epochs
+        warmup_epochs = 10
         if epoch < warmup_epochs:
             return float(epoch) / float(max(1, warmup_epochs))
         else:
-            # Step decay after the warmup epochs
-            return 0.999 ** (epoch - warmup_epochs)
+            T_cur = epoch - warmup_epochs
+            T_total = args.n_epochs - warmup_epochs
+            return 0.5 * (1 + np.cos(np.pi * T_cur / T_total))
 
 
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
@@ -155,14 +158,21 @@ if __name__ == "__main__":
             traj_adv = traj_adv.view(-1)
             traj_ret = traj_ret.view(-1)
 
+            # Normalize the advantages
+            traj_adv = (traj_adv - traj_adv.mean()) / (traj_adv.std() + 1e-8)
+
             # Create an array of indices to sample from the trajectories
             dataset_size = args.n_steps * args.n_envs
             traj_indices = np.arange(dataset_size)
 
-            sum_loss_policy = 0.0
-            sum_loss_value = 0.0
-            sum_entropy = 0.0
-            sum_loss_total = 0.0
+            losses_policy = []
+            losses_value = []
+            entropies = []
+            losses_total = []
+
+            kl_list = []
+            kl_early_stop = False
+
             for _ in tqdm(range(args.train_iters), desc=f"Epoch {epoch}: Training"):
                 # Shuffle the indices
                 np.random.shuffle(traj_indices)
@@ -177,21 +187,32 @@ if __name__ == "__main__":
                     batch_old_log_probs = traj_logprob[batch_indices]
                     batch_adv = traj_adv[batch_indices]
 
-                    loss, policy_loss, value_loss, entropy = ppo_update(agent, optimizer, scaler, batch_obs,
-                                                                        batch_actions, batch_returns,
-                                                                        batch_old_log_probs, batch_adv,
-                                                                        args.clip_ratio, args.vf_coef, args.ent_coef)
+                    loss, policy_loss, value_loss, entropy, kl = ppo_update(agent, optimizer, scaler, batch_obs,
+                                                                            batch_actions, batch_returns,
+                                                                            batch_old_log_probs, batch_adv,
+                                                                            args.clip_ratio, args.vf_coef,
+                                                                            args.ent_coef)
 
-                    sum_loss_policy += policy_loss
-                    sum_loss_value += value_loss
-                    sum_entropy += entropy
-                    sum_loss_total += loss
+                    losses_policy.append(policy_loss)
+                    losses_value.append(value_loss)
+                    entropies.append(entropy)
+                    losses_total.append(loss)
+                    kl_list.append(kl)
+
+                    # Early stopping if KL divergence is too high
+                    if kl > args.target_kl:
+                        kl_early_stop = True
+                        break
+
+                if kl_early_stop:
+                    break
 
             # Log the losses
-            total_loss = sum_loss_total / args.train_iters / (dataset_size / args.batch_size)
-            policy_loss = sum_loss_policy / args.train_iters / (dataset_size / args.batch_size)
-            value_loss = sum_loss_value / args.train_iters / (dataset_size / args.batch_size)
-            entropy = sum_entropy / args.train_iters / (dataset_size / args.batch_size)
+            total_loss = np.mean(losses_total)
+            policy_loss = np.mean(losses_policy)
+            value_loss = np.mean(losses_value)
+            entropy = np.mean(entropies)
+            kl = np.mean(kl_list)
             writer.add_scalar(
                 "loss/total", total_loss, epoch)
             writer.add_scalar(
@@ -200,10 +221,12 @@ if __name__ == "__main__":
                 "loss/value", value_loss, epoch)
             writer.add_scalar(
                 "loss/entropy", entropy, epoch)
+            writer.add_scalar(
+                "metrics/kl", kl, epoch)
 
             # Log learning rate
             writer.add_scalar(
-                "learning_rate", scheduler.get_last_lr()[0], epoch)
+                "metrics/learning_rate", scheduler.get_last_lr()[0], epoch)
 
             # Log the rewards
             mean_reward = float(np.mean(reward_list) / args.reward_scale)
@@ -211,7 +234,8 @@ if __name__ == "__main__":
             reward_list = []
             print(f"Epoch {epoch} done in {time.time() - start_time:.2f}s, mean reward: {mean_reward:.2f}, "
                   f"total loss: {total_loss:.4f}, policy loss: {policy_loss:.4f}, value loss: {value_loss:.4f}, "
-                  f"entropy: {entropy:.4f}, learning rate: {scheduler.get_last_lr()[0]:.2e}")
+                  f"entropy: {entropy:.4f}, kl: {kl:.4f}, "
+                  f"learning rate: {scheduler.get_last_lr()[0]:.2e}")
             start_time = time.time()
 
             # Save the model if the mean reward is better
