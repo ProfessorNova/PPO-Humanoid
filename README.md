@@ -73,7 +73,7 @@ python test_ppo.py
 ```
 
 This will load the pre-trained model for the root of the repository (`model.pt`) and run it in the Humanoid-v5
-environment.
+environment. If git lfs is not installed or not working properly, you can download the model manually from the [release page](https://github.com/ProfessorNova/PPO-Humanoid/releases). Place the downloaded `model.pt` file in the root of the repository.
 
 ### Training with custom hyperparameters
 

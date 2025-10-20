@@ -1,3 +1,4 @@
-checkpoints
-logs
-videos
+__pycache__/
+checkpoints/
+logs/
+videos/
